@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/network/api_exception.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/app_back_button.dart';
-import '../../../../core/widgets/app_button.dart';
+import '../../../../core/widgets/skeleton_loader.dart';
 import '../../application/financial_message_import_service.dart';
 import '../../data/models/financial_message_import.dart';
 import '../../data/models/financial_message_pilot_summary.dart';
@@ -62,16 +62,19 @@ class _FinancialMessageImportsPageState
   }
 
   Future<void> _load({required bool reset}) async {
-    if (!reset && (_loadingMore || !_hasNextPage)) {
+    if (!reset && (_loading || _loadingMore || !_hasNextPage)) {
       return;
     }
     final generation = reset ? ++_generation : _generation;
     final page = reset ? 1 : _page + 1;
     setState(() {
+      _error = null;
       if (reset) {
         _loading = true;
-        _error = null;
+        _loadingMore = false;
+        _items = const [];
         _total = 0;
+        _hasNextPage = false;
       } else {
         _loadingMore = true;
       }
@@ -158,463 +161,555 @@ class _FinancialMessageImportsPageState
       child: Scaffold(
         backgroundColor: AppColors.background,
         body: SafeArea(
-          child: Column(
-            children: [
-              _TopBar(
-                onBack: _close,
-                onRefresh: () => unawaited(_refresh()),
-                onSetup: () => unawaited(_openSetup()),
-              ),
-              _ImportsHeader(
-                selected: _status,
-                total: _total,
-                loading: _loading,
-                onSelected: _selectStatus,
-              ),
-              if (_status == FinancialMessageImportStatus.pending &&
-                  _pilotSummary?.hasOutdatedShortcuts == true)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(18, 4, 18, 8),
-                  child: Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton.icon(
-                      onPressed: () => unawaited(_openSetup()),
-                      icon: const Icon(Icons.phone_iphone_rounded, size: 18),
-                      label: const Text('Update your iPhone Shortcut'),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 680),
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        AppBackButton(onBack: _close),
+                        IconButton(
+                          tooltip: 'Refresh messages',
+                          onPressed: _loading
+                              ? null
+                              : () => unawaited(_refresh()),
+                          style: IconButton.styleFrom(
+                            backgroundColor: AppColors.surfaceElevated,
+                            foregroundColor: AppColors.textPrimary,
+                            minimumSize: const Size.square(44),
+                          ),
+                          icon: const Icon(Icons.refresh_rounded),
+                        ),
+                      ],
                     ),
                   ),
-                ),
-              Expanded(child: _buildBody()),
-            ],
+                  Expanded(
+                    child: RefreshIndicator(
+                      onRefresh: _refresh,
+                      child: CustomScrollView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        slivers: [
+                          SliverPadding(
+                            padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+                            sliver: SliverToBoxAdapter(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const _PageHeading(),
+                                  const SizedBox(height: 20),
+                                  _ShortcutCard(
+                                    needsUpdate:
+                                        _pilotSummary?.hasOutdatedShortcuts ??
+                                        false,
+                                    onPressed: () => unawaited(_openSetup()),
+                                  ),
+                                  const SizedBox(height: 26),
+                                  _InboxHeader(
+                                    selected: _status,
+                                    total: _loading || _items.isEmpty
+                                        ? null
+                                        : _total,
+                                    onSelected: _selectStatus,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          SliverPadding(
+                            padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
+                            sliver: _buildInbox(),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildBody() {
+  Widget _buildInbox() {
     if (_loading) {
-      return const _LoadingList();
+      return const SliverToBoxAdapter(child: _LoadingList());
     }
-    if (_error != null) {
-      return _PageState(
-        icon: Icons.cloud_off_rounded,
-        title: 'Could not load your messages',
-        detail: _error!,
-        actionLabel: 'Try again',
-        onAction: () => unawaited(_load(reset: true)),
-      );
-    }
+    final error = _error;
     if (_items.isEmpty) {
-      return _PageState(
-        icon: Icons.mark_email_read_outlined,
-        title: _status == FinancialMessageImportStatus.pending
-            ? 'You’re all caught up'
-            : 'No ${_inboxStatusLabel(_status).toLowerCase()} messages',
-        detail: _status == FinancialMessageImportStatus.pending
-            ? 'Payment messages sent by your iPhone Shortcut will appear here. You can check each one before adding it to your records.'
-            : 'Messages you ${_status == FinancialMessageImportStatus.confirmed ? 'added' : 'dismissed'} will appear here.',
-        actionLabel: _status == FinancialMessageImportStatus.pending
-            ? 'Connect my iPhone'
-            : null,
-        onAction: _status == FinancialMessageImportStatus.pending
-            ? () => unawaited(_openSetup())
-            : null,
+      if (error != null) {
+        return SliverToBoxAdapter(
+          child: _InboxState(
+            icon: Icons.cloud_off_rounded,
+            title: 'Could not load messages',
+            detail: error,
+            action: TextButton.icon(
+              onPressed: () => unawaited(_load(reset: true)),
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text('Try again'),
+            ),
+          ),
+        );
+      }
+      return SliverToBoxAdapter(
+        child: _InboxState(
+          icon: _status == FinancialMessageImportStatus.confirmed
+              ? Icons.inventory_2_outlined
+              : Icons.inbox_outlined,
+          title: switch (_status) {
+            FinancialMessageImportStatus.pending => 'No messages to review',
+            FinancialMessageImportStatus.confirmed => 'No added messages',
+            FinancialMessageImportStatus.dismissed => 'No dismissed messages',
+            FinancialMessageImportStatus.expired => 'No expired messages',
+          },
+          detail: _status == FinancialMessageImportStatus.pending
+              ? 'New messages from your iPhone Shortcut will appear here.'
+              : null,
+        ),
       );
     }
-    return RefreshIndicator(
-      onRefresh: _refresh,
-      child: ListView.separated(
-        padding: const EdgeInsets.fromLTRB(18, 12, 18, 32),
-        itemCount: _items.length + (_hasNextPage ? 1 : 0),
-        separatorBuilder: (_, _) => const SizedBox(height: 10),
-        itemBuilder: (context, index) {
-          if (index == _items.length) {
-            return Center(
-              child: TextButton(
-                onPressed: _loadingMore
-                    ? null
-                    : () => unawaited(_load(reset: false)),
-                child: Text(_loadingMore ? 'Loading…' : 'Load more'),
+
+    return SliverList.separated(
+      itemCount: _items.length + (_hasNextPage ? 1 : 0),
+      separatorBuilder: (_, _) => const SizedBox(height: 10),
+      itemBuilder: (context, index) {
+        if (index < _items.length) {
+          final item = _items[index];
+          return _ImportRow(
+            key: ValueKey(item.id),
+            item: item,
+            onTap: () => unawaited(_open(item)),
+          );
+        }
+
+        return Column(
+          children: [
+            if (error != null)
+              Text(
+                error,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: AppColors.danger,
+                ),
               ),
-            );
-          }
-          return _ImportRow(item: _items[index], onTap: _open);
-        },
+            TextButton(
+              onPressed: _loadingMore
+                  ? null
+                  : () => unawaited(_load(reset: false)),
+              child: Text(
+                _loadingMore
+                    ? 'Loading more…'
+                    : error == null
+                    ? 'Load more'
+                    : 'Retry loading more',
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _PageHeading extends StatelessWidget {
+  const _PageHeading();
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Semantics(
+          header: true,
+          child: Text('Payment messages', style: textTheme.headlineMedium),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Review imported payment messages before adding them to your records.',
+          style: textTheme.bodyMedium,
+        ),
+      ],
+    );
+  }
+}
+
+class _ShortcutCard extends StatelessWidget {
+  const _ShortcutCard({required this.needsUpdate, required this.onPressed});
+
+  final bool needsUpdate;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.26)),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color.alphaBlend(
+              AppColors.primary.withValues(alpha: 0.12),
+              AppColors.surface,
+            ),
+            AppColors.surface,
+          ],
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _IconTile(
+                  icon: needsUpdate
+                      ? Icons.sync_problem_rounded
+                      : Icons.bolt_rounded,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        needsUpdate
+                            ? 'Shortcut update available'
+                            : 'iPhone Shortcut',
+                        style: textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        needsUpdate
+                            ? 'Update your Shortcut to keep importing payment messages.'
+                            : 'Send payment messages to Ingengo using Apple Shortcuts.',
+                        style: textTheme.bodyMedium,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: onPressed,
+              icon: Icon(
+                needsUpdate
+                    ? Icons.system_update_rounded
+                    : Icons.phonelink_ring_rounded,
+                size: 20,
+              ),
+              label: Text(
+                needsUpdate ? 'Update iPhone Shortcut' : 'Connect my iPhone',
+                textAlign: TextAlign.center,
+              ),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: AppColors.background,
+                iconColor: AppColors.background,
+                minimumSize: const Size(0, 48),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                textStyle: textTheme.labelLarge?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
-class _TopBar extends StatelessWidget {
-  const _TopBar({
-    required this.onBack,
-    required this.onRefresh,
-    required this.onSetup,
-  });
-  final VoidCallback onBack;
-  final VoidCallback onRefresh;
-  final VoidCallback onSetup;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(14, 10, 14, 8),
-    child: Row(
-      children: [
-        AppBackButton(onBack: onBack),
-        const Spacer(),
-        TextButton(onPressed: onSetup, child: const Text('iPhone setup')),
-        IconButton(
-          tooltip: 'Refresh messages',
-          onPressed: onRefresh,
-          icon: const Icon(Icons.refresh_rounded),
-        ),
-      ],
-    ),
-  );
-}
-
-class _ImportsHeader extends StatelessWidget {
-  const _ImportsHeader({
+class _InboxHeader extends StatelessWidget {
+  const _InboxHeader({
     required this.selected,
     required this.total,
-    required this.loading,
     required this.onSelected,
   });
 
   final FinancialMessageImportStatus selected;
-  final int total;
-  final bool loading;
+  final int? total;
   final ValueChanged<FinancialMessageImportStatus> onSelected;
 
   @override
   Widget build(BuildContext context) {
-    const options = [
+    const statuses = [
       FinancialMessageImportStatus.pending,
       FinancialMessageImportStatus.confirmed,
       FinancialMessageImportStatus.dismissed,
     ];
-    final description = switch (selected) {
-      FinancialMessageImportStatus.pending =>
-        'Tap a message, check the details, then confirm or dismiss.',
-      FinancialMessageImportStatus.confirmed =>
-        'Messages already added to your financial records.',
-      FinancialMessageImportStatus.dismissed =>
-        'Messages you chose not to add to your records.',
-      FinancialMessageImportStatus.expired =>
-        'Messages that expired before they were reviewed.',
-    };
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 4, 18, 8),
-      child: Column(
-        children: [
-          const Text(
-            'Payment messages',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 19,
-              height: 1.25,
-              fontWeight: FontWeight.w800,
-              color: AppColors.textPrimary,
+    final textTheme = Theme.of(context).textTheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: 12,
+          runSpacing: 4,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Semantics(
+              header: true,
+              child: Text('Inbox', style: textTheme.titleLarge),
             ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            description,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 11,
-              height: 1.45,
-              color: AppColors.textSecondary,
-            ),
-          ),
-          const SizedBox(height: 18),
-          Wrap(
-            alignment: WrapAlignment.center,
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final status in options)
-                ChoiceChip(
-                  label: Text(_inboxStatusLabel(status)),
-                  selected: selected == status,
-                  onSelected: (_) => onSelected(status),
-                  showCheckmark: false,
-                  backgroundColor: AppColors.surface,
-                  selectedColor: AppColors.primary,
-                  side: BorderSide.none,
-                  shape: const StadiumBorder(),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
-                  ),
-                  labelStyle: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: selected == status
-                        ? AppColors.background
-                        : AppColors.textSecondary,
-                  ),
-                  materialTapTargetSize: MaterialTapTargetSize.padded,
+            if (total != null)
+              Text(
+                '$total ${total == 1 ? 'message' : 'messages'}',
+                style: textTheme.bodySmall?.copyWith(
+                  color: AppColors.textSecondary,
                 ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          AnimatedSwitcher(
-            duration: MediaQuery.disableAnimationsOf(context)
-                ? Duration.zero
-                : const Duration(milliseconds: 180),
-            child: Text(
-              loading
-                  ? 'Loading messages…'
-                  : '$total ${total == 1 ? 'message' : 'messages'}',
-              key: ValueKey((loading, selected, total)),
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textSecondary,
               ),
-            ),
-          ),
-        ],
-      ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 4,
+          children: [
+            for (final status in statuses)
+              ChoiceChip(
+                label: Text(_inboxStatusLabel(status)),
+                selected: selected == status,
+                onSelected: (_) => onSelected(status),
+                showCheckmark: false,
+                backgroundColor: AppColors.surface,
+                selectedColor: AppColors.primary,
+                side: BorderSide(
+                  color: selected == status
+                      ? AppColors.primary
+                      : AppColors.border,
+                ),
+                shape: const StadiumBorder(),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                labelStyle: textTheme.labelLarge?.copyWith(
+                  color: selected == status
+                      ? AppColors.background
+                      : AppColors.textSecondary,
+                ),
+                materialTapTargetSize: MaterialTapTargetSize.padded,
+              ),
+          ],
+        ),
+      ],
     );
   }
 }
 
 class _ImportRow extends StatelessWidget {
-  const _ImportRow({required this.item, required this.onTap});
+  const _ImportRow({super.key, required this.item, required this.onTap});
+
   final FinancialMessageImport item;
-  final ValueChanged<FinancialMessageImport> onTap;
+  final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) => Semantics(
-    button: true,
-    label: 'Review ${item.sourceLabel} message from ${item.senderLabel}',
-    child: Material(
+  Widget build(BuildContext context) {
+    final amount = item.amount;
+    final textTheme = Theme.of(context).textTheme;
+    final needsReview =
+        item.status == FinancialMessageImportStatus.pending &&
+        item.needsAttention;
+
+    return Material(
       color: AppColors.surface,
-      borderRadius: BorderRadius.circular(24),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: const BorderSide(color: AppColors.border),
+      ),
       clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: () => onTap(item),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(15, 14, 13, 14),
-          child: Row(
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  _sourceIcon(item),
-                  color: AppColors.primary,
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      item.senderLabel,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      '${item.sourceLabel} · ${_shortDate(item.messageReceivedAt)}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: AppColors.textSecondary,
-                        fontSize: 10,
-                      ),
-                    ),
-                    if (item.needsAttention) ...[
-                      const SizedBox(height: 7),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
+      child: Semantics(
+        button: true,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                _IconTile(icon: _sourceIcon(item)),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(item.senderLabel, style: textTheme.titleMedium),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${item.sourceLabel} · ${_shortDate(item.messageReceivedAt)}',
+                        style: textTheme.bodySmall?.copyWith(
+                          color: AppColors.textSecondary,
                         ),
-                        decoration: BoxDecoration(
-                          color: AppColors.primaryMuted.withValues(alpha: 0.14),
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: const Text(
-                          'Review details',
-                          style: TextStyle(
-                            color: AppColors.primary,
-                            fontSize: 9,
-                            fontWeight: FontWeight.w700,
+                      ),
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 10,
+                        runSpacing: 4,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Text(
+                            amount == null
+                                ? 'Check amount'
+                                : '${_formatAmount(amount)} RWF',
+                            style: textTheme.labelLarge?.copyWith(
+                              color: amount == null
+                                  ? AppColors.textSecondary
+                                  : AppColors.textPrimary,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
-                        ),
+                          if (needsReview)
+                            Text(
+                              'Review details',
+                              style: textTheme.labelMedium?.copyWith(
+                                color: AppColors.primary,
+                              ),
+                            ),
+                        ],
                       ),
                     ],
-                  ],
+                  ),
                 ),
-              ),
-              const SizedBox(width: 10),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 118),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      item.amount == null
-                          ? 'Check amount'
-                          : '${_formatAmount(item.amount!)} RWF',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: item.amount == null ? 10 : 13,
-                        fontWeight: FontWeight.w800,
-                        color: item.amount == null
-                            ? AppColors.textSecondary
-                            : AppColors.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    const Icon(
-                      Icons.arrow_forward_rounded,
-                      size: 16,
-                      color: AppColors.textSecondary,
-                    ),
-                  ],
+                const SizedBox(width: 8),
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  color: AppColors.textSecondary,
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
+    );
+  }
+}
+
+class _IconTile extends StatelessWidget {
+  const _IconTile({required this.icon});
+
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: 44,
+    height: 44,
+    decoration: BoxDecoration(
+      color: AppColors.primary.withValues(alpha: 0.10),
+      borderRadius: BorderRadius.circular(12),
     ),
+    child: Icon(icon, color: AppColors.primary, size: 22),
   );
 }
 
 class _LoadingList extends StatelessWidget {
   const _LoadingList();
-  @override
-  Widget build(BuildContext context) => ListView.separated(
-    padding: const EdgeInsets.fromLTRB(18, 12, 18, 32),
-    itemCount: 6,
-    separatorBuilder: (_, _) => const SizedBox(height: 10),
-    itemBuilder: (_, index) => Container(
-      height: index.isEven ? 82 : 76,
-      padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(24),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: AppColors.surfaceElevated,
-              shape: BoxShape.circle,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: 118,
-                  height: 10,
-                  decoration: BoxDecoration(
-                    color: AppColors.surfaceElevated,
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Container(
-                  width: 86,
-                  height: 8,
-                  decoration: BoxDecoration(
-                    color: AppColors.surfaceElevated,
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Container(
-            width: 68,
-            height: 10,
-            decoration: BoxDecoration(
-              color: AppColors.surfaceElevated,
-              borderRadius: BorderRadius.circular(999),
-            ),
-          ),
-        ],
-      ),
-    ),
-  );
-}
-
-class _PageState extends StatelessWidget {
-  const _PageState({
-    required this.icon,
-    required this.title,
-    required this.detail,
-    this.actionLabel,
-    this.onAction,
-  });
-  final IconData icon;
-  final String title;
-  final String detail;
-  final String? actionLabel;
-  final VoidCallback? onAction;
 
   @override
-  Widget build(BuildContext context) => Center(
-    child: SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
+  Widget build(BuildContext context) => Semantics(
+    liveRegion: true,
+    label: 'Loading messages',
+    child: ExcludeSemantics(
       child: Column(
-        mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 34, color: AppColors.textSecondary),
-          const SizedBox(height: 14),
-          Text(
-            title,
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            detail,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: AppColors.textSecondary,
-              fontSize: 12,
-              height: 1.45,
-            ),
-          ),
-          if (onAction != null) ...[
-            const SizedBox(height: 10),
-            AppButton(
-              label: actionLabel!,
-              iconWidget: const Icon(Icons.arrow_forward_rounded),
-              onPressed: onAction,
+          for (var index = 0; index < 3; index++) ...[
+            if (index > 0) const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppColors.border),
+              ),
+              child: const Row(
+                children: [
+                  SkeletonBox(width: 44, height: 44, radius: 12),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SkeletonBox(width: 124, height: 12),
+                        SizedBox(height: 8),
+                        SkeletonBox(width: 92, height: 9),
+                        SizedBox(height: 8),
+                        SkeletonBox(width: 66, height: 10),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
         ],
       ),
     ),
   );
+}
+
+class _InboxState extends StatelessWidget {
+  const _InboxState({
+    required this.icon,
+    required this.title,
+    this.detail,
+    this.action,
+  });
+
+  final IconData icon;
+  final String title;
+  final String? detail;
+  final Widget? action;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final detail = this.detail;
+    final action = this.action;
+
+    return Semantics(
+      liveRegion: true,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Column(
+          children: [
+            _IconTile(icon: icon),
+            const SizedBox(height: 12),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: textTheme.titleMedium,
+            ),
+            if (detail != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                detail,
+                textAlign: TextAlign.center,
+                style: textTheme.bodyMedium,
+              ),
+            ],
+            if (action != null) ...[const SizedBox(height: 8), action],
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 String _shortDate(DateTime value) =>
