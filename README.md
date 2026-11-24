@@ -1,16 +1,25 @@
+<div align="center">
+
 # Ingengo App
 
 **The open-source Flutter client for Ingengo payments, income, and financial-message review.**
 
-[Backend repository](https://github.com/nexcoderw/ingengo-api) ·
-[Live API reference](https://ingengo-api.nexcode.africa/api/v1/docs) ·
-[Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [MIT License](LICENSE)
+[![Flutter SDK](https://img.shields.io/badge/Flutter-SDK-027DFD?logo=flutter&logoColor=white)](https://flutter.dev/)
+[![Dart SDK ^3.10.4](https://img.shields.io/badge/Dart-%5E3.10.4-0175C2?logo=dart&logoColor=white)](https://dart.dev/)
+[![Android, iOS, and Web](https://img.shields.io/badge/Platforms-Android%20%7C%20iOS%20%7C%20Web-455A64)](#platform-support)
+[![License: MIT](https://img.shields.io/badge/License-MIT-2E7D32)](LICENSE)
 
 Ingengo helps people in Rwanda organize payment and income records. The app
 guides users through Send Money, hands eligible transfers off to the phone's
 dialer, and keeps payment evidence and income records available for review.
 The [Ingengo API](https://github.com/nexcoderw/ingengo-api) handles
 authentication and stores records. Payment providers handle the movement of funds.
+
+[Ingengo API repository](https://github.com/nexcoderw/ingengo-api) ·
+[Live API reference](https://ingengo-api.nexcode.africa/api/v1/docs) ·
+[Local setup](#getting-started) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
+
+</div>
 
 ## Contents
 
