@@ -1,5 +1,7 @@
 name: ingengo
-description: "Budget management app to help users track their expenses and manage their finances effectively."
+description: "Flutter client for Ingengo payments, income, and financial-message review."
+repository: https://github.com/nexcoderw/ingengo-app
+issue_tracker: https://github.com/nexcoderw/ingengo-app/issues
 publish_to: 'none'
 
 version: 2.9.0
@@ -33,6 +35,8 @@ flutter:
 
   assets:
     - .env
+    - LICENSE
+    - assets/fonts/dm_sans/OFL.txt
     - assets/branding/png/tight/logo-color-beige-512.png
     - assets/images/
     - assets/icons/
