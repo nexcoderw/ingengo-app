@@ -1,0 +1,22 @@
+name: Feature request
+description: Propose a Flutter app improvement and explain who it helps.
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: Describe the situation, who it affects, and the current workaround.
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: Explain what would make the experience better and how to tell it works.
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: Platform or API impact
+      description: Note any affected screens, device permissions, and related backend changes when known.

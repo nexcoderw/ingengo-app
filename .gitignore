@@ -13,7 +13,16 @@
 migrate_working_dir/
 
 .env
-.env.production
+.env.*
+!.env.example
+!.env.example.*
+
+# Local signing credentials
+/android/key.properties
+*.jks
+*.keystore
+*.p12
+*.mobileprovision
 
 # IntelliJ related
 *.iml
