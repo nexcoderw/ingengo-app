@@ -48,6 +48,11 @@ enum TransactionCategory {
   shopping('SHOPPING', 'Shopping'),
   family('FAMILY', 'Family'),
   entertainment('ENTERTAINMENT', 'Entertainment'),
+  airtime('AIRTIME', 'Airtime'),
+  personalCare('PERSONAL_CARE', 'Personal care'),
+  travel('TRAVEL', 'Travel'),
+  savings('SAVINGS', 'Savings'),
+  loanRepayment('LOAN_REPAYMENT', 'Loan repayment'),
   other('OTHER', 'Other');
 
   const TransactionCategory(this.apiValue, this.label);
@@ -64,18 +69,14 @@ enum TransactionCategory {
   }
 
   static TransactionCategory fromLabel(String label) {
-    return switch (label.trim().toLowerCase()) {
-      'transport' => TransactionCategory.transport,
-      'groceries' => TransactionCategory.groceries,
-      'bills' => TransactionCategory.bills,
-      'rent' => TransactionCategory.rent,
-      'health' || 'healthcare' => TransactionCategory.healthcare,
-      'education' => TransactionCategory.education,
-      'dining' || 'food & dining' => TransactionCategory.foodDining,
-      'shopping' => TransactionCategory.shopping,
-      'family' => TransactionCategory.family,
-      'entertainment' => TransactionCategory.entertainment,
-      _ => TransactionCategory.other,
+    final normalized = label.trim().toLowerCase();
+    return switch (normalized) {
+      'health' => TransactionCategory.healthcare,
+      'dining' => TransactionCategory.foodDining,
+      _ => values.firstWhere(
+        (item) => item.label.toLowerCase() == normalized,
+        orElse: () => TransactionCategory.other,
+      ),
     };
   }
 }

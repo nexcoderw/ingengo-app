@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/app_button.dart';
+import '../../data/models/transaction_models.dart';
 
 Future<String?> showSendMoneyCategorySheet(
   BuildContext context, {
@@ -44,17 +45,22 @@ class _SendMoneyCategorySheetState extends State<_SendMoneyCategorySheet> {
   static const int _categoriesPerPage = 6;
 
   static const _categories = [
-    _MoneyCategory(label: 'Transport', icon: Icons.directions_bus_rounded),
-    _MoneyCategory(label: 'Groceries', icon: Icons.shopping_basket_rounded),
-    _MoneyCategory(label: 'Bills', icon: Icons.receipt_long_rounded),
-    _MoneyCategory(label: 'Rent', icon: Icons.home_rounded),
-    _MoneyCategory(label: 'Health', icon: Icons.local_hospital_rounded),
-    _MoneyCategory(label: 'Education', icon: Icons.school_rounded),
-    _MoneyCategory(label: 'Dining', icon: Icons.restaurant_rounded),
-    _MoneyCategory(label: 'Shopping', icon: Icons.shopping_bag_rounded),
-    _MoneyCategory(label: 'Family', icon: Icons.family_restroom_rounded),
-    _MoneyCategory(label: 'Entertainment', icon: Icons.movie_rounded),
-    _MoneyCategory(label: 'Other', icon: Icons.more_horiz_rounded),
+    _MoneyCategory(TransactionCategory.transport, Icons.directions_bus_rounded),
+    _MoneyCategory(TransactionCategory.groceries, Icons.shopping_basket_rounded),
+    _MoneyCategory(TransactionCategory.bills, Icons.receipt_long_rounded),
+    _MoneyCategory(TransactionCategory.rent, Icons.home_rounded),
+    _MoneyCategory(TransactionCategory.healthcare, Icons.local_hospital_rounded),
+    _MoneyCategory(TransactionCategory.education, Icons.school_rounded),
+    _MoneyCategory(TransactionCategory.foodDining, Icons.restaurant_rounded),
+    _MoneyCategory(TransactionCategory.shopping, Icons.shopping_bag_rounded),
+    _MoneyCategory(TransactionCategory.family, Icons.family_restroom_rounded),
+    _MoneyCategory(TransactionCategory.entertainment, Icons.movie_rounded),
+    _MoneyCategory(TransactionCategory.airtime, Icons.phone_android_rounded),
+    _MoneyCategory(TransactionCategory.personalCare, Icons.spa_rounded),
+    _MoneyCategory(TransactionCategory.travel, Icons.flight_takeoff_rounded),
+    _MoneyCategory(TransactionCategory.savings, Icons.savings_rounded),
+    _MoneyCategory(TransactionCategory.loanRepayment, Icons.payments_rounded),
+    _MoneyCategory(TransactionCategory.other, Icons.more_horiz_rounded),
   ];
 
   late final PageController _pageController;
@@ -352,7 +358,7 @@ class _CategoryCard extends StatelessWidget {
                   ? Duration.zero
                   : const Duration(milliseconds: 180),
               curve: Curves.easeOutCubic,
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+              padding: const EdgeInsets.all(6),
               decoration: BoxDecoration(
                 color: isSelected
                     ? AppColors.primary.withValues(alpha: 0.15)
@@ -389,16 +395,20 @@ class _CategoryCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 6),
-                  Text(
-                    category.label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                      color: isSelected
-                          ? AppColors.textPrimary
-                          : AppColors.textSecondary,
+                  Flexible(
+                    child: Text(
+                      category.label,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 10,
+                        height: 1.1,
+                        fontWeight: FontWeight.w700,
+                        color: isSelected
+                            ? AppColors.textPrimary
+                            : AppColors.textSecondary,
+                      ),
                     ),
                   ),
                 ],
@@ -412,8 +422,14 @@ class _CategoryCard extends StatelessWidget {
 }
 
 class _MoneyCategory {
-  const _MoneyCategory({required this.label, required this.icon});
+  const _MoneyCategory(this.category, this.icon);
 
-  final String label;
+  final TransactionCategory category;
   final IconData icon;
+
+  String get label => switch (category) {
+    TransactionCategory.healthcare => 'Health',
+    TransactionCategory.foodDining => 'Dining',
+    _ => category.label,
+  };
 }
