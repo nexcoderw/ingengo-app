@@ -10,7 +10,7 @@ Before changing code, read the rule documents relevant to the task from the
 - `.agents/security.md` for secrets, authentication, storage, and network safety.
 - `.agents/environment.md` for runtime configuration.
 - `.agents/testing.md` for validation expectations.
-- `.agents/git.md` before staging or proposing commits.
+- `.agents/git.md` before editing and for branch, commit, and pull request handoffs.
 
 ## Required Workflow
 
@@ -19,6 +19,7 @@ Before changing code, read the rule documents relevant to the task from the
 3. Do not run formatting, analysis, tests, builds, dependency installation, or application processes unless the user explicitly asks. Provide the exact commands for the user to run.
 4. Use feature-first architecture and remove stale imports, routes, dependencies, tests, and platform configuration when deleting a feature.
 5. Never read, print, modify, or commit real secrets from `.env` files.
-6. Follow `.agents/git.md`: every changed file must have its own commit and commit message.
+6. Use read-only Git commands. Follow `.agents/git.md` for the pre-edit branch report, one commit
+   command pair per changed file, and the complete PR handoff.
 
 When instructions conflict, the user's current request takes precedence.

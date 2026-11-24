@@ -1,72 +1,92 @@
-# Git Rules
+# Git Workflow
 
-This project uses Conventional Commits and requires one changed file per commit.
+## Purpose and scope
 
-## One File per Commit
+Keep Ingengo repository history reviewable while the developer performs every Git write.
 
-Every modified, added, renamed, or deleted file must be committed separately. Do not combine generated files, tests, documentation, or source files in one commit.
+## Mandatory requirements
 
-Use explicit paths:
+Agents use read-only Git commands only. At task completion, provide one commit per changed file with
+one exact `git add <file>` and `git commit` pair. Order dependencies before importers, tests, and linked
+documentation. Commit all `.agents/` files as one uninterrupted group. Use
+`type(scope): imperative summary`, lowercase, no period, at most 72 characters. Valid types are
+`feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `style`, and `perf`.
+
+## Forbidden practices
+
+No agent-run add, commit, push, pull, merge, rebase, reset, restore, checkout, stash, tag, cherry-pick,
+clean, or other Git writes. Keep secrets, generated build output, and unmatched lockfiles out of
+commits.
+
+## Correct example
 
 ```bash
-git add -- path/to/file.dart
-git commit -m "type(scope): concise change"
-```
-
-Before each commit, verify the staged scope:
-
-```bash
+git add -- AGENTS.md
 git diff --cached --name-only
 git diff --cached --check
+git commit -m "docs(agents): update agent instructions"
 ```
 
-The first command must show exactly one file.
+Before committing, verify the staged scope contains exactly the intended file and the staged diff
+passes the whitespace check.
 
-## Commit Format
+## Common mistakes
 
-```text
-type(scope): imperative summary
-```
+Bundling several files in one commit, staging a lockfile that the human did not regenerate with
+the repository’s package manager, or committing `.env` credentials.
 
-Allowed types:
+## Review checklist
 
-- `feat`: user-visible capability.
-- `fix`: defect correction.
-- `refactor`: structural change with no intended behavior change.
-- `style`: visual or formatting-only change.
-- `test`: test addition, removal, or correction.
-- `docs`: documentation only.
-- `chore`: tooling, dependency, generated, or platform maintenance.
-- `perf`: measurable performance improvement.
-- `build`: build system or packaging change.
-- `ci`: continuous-integration change.
+- Every file has one dependency-ordered message and command pair.
+- Package and human-generated lockfile commits are consecutive.
+- Confirm the commit excludes secrets, generated build output, ignored files, and unrelated changes.
 
-Prefer a feature or platform name for the scope, such as `auth`, `home`, `navigation`, `android`, `ios`, `deps`, or `security`.
+## Branch and pull request workflow
 
-Examples:
+- Every new implementation, fix, redesign, refactor or documentation task uses a fresh,
+  short-lived branch from an updated `main`, unless the user explicitly specifies another
+  base. Name it `type/short-description`, such as `feat/organization-registration`,
+  `fix/sidebar-highlight`, `style/organization-cards` or `docs/pr-handoff-rules`.
+- Before editing, report the affected repository, inspected current branch, proposed task
+  branch, PR base and focused scope. If the current branch is `main` or belongs to another
+  task, identify the mismatch and provide safe human branch-preparation commands. Keep the
+  task separate before committing; do not add unrelated work to an existing PR.
+- The human creates and switches branches under the existing Git execution rules. This
+  policy does not authorize agent-run Git writes. Inspect local changes and unpushed commits
+  before suggesting a switch. Never assume `origin/main` is current without a fetch, or
+  discard work to prepare a branch.
+- Continue corrections and review feedback for an open PR on its existing branch. After
+  that PR is merged or abandoned, start a fresh branch for the next task. Do not recycle a
+  merged branch for a new PR.
+- One PR delivers one coherent, reviewable outcome and may contain multiple files and
+  commits. Preserve the one-file-per-commit handoff; it does not require one PR per file.
+  Keep required styles, dependencies, tests and verified security repairs with their feature.
+- A task spanning repositories needs a separate branch and PR in each repository. State
+  the dependency and merge order, and link related PRs when their actual URLs are available.
+  A dependent or stacked PR may use another base only when that relationship is explicit.
 
-```text
-feat(auth): add email OTP verification
-style(navigation): compact bottom navigation capsule
-refactor(expenses): remove expense API routes
-test(home): expect send money landing screen
-docs(security): document token storage rules
-chore(deps): remove unused image picker package
-```
+## Required PR information at every task handoff
 
-## Commit Quality
+In addition to the existing per-file commit commands, always provide:
 
-- Use an imperative summary: `add`, `remove`, `update`, `prevent`, or `simplify`.
-- Keep the subject concise and do not end it with a period.
-- Describe the actual file change, not the task number or a vague phrase such as `updates`.
-- Never include secrets, tokens, private URLs, customer information, or temporary debugging data.
-- Generated files still receive their own commit.
-- A deleted file receives a message explaining what was removed.
+1. Repository, inspected current branch, proposed task/head branch and target/base branch.
+2. A copy/paste PR title and Markdown description matching the final change. Describe the
+   problem, resulting behavior, relevant limitations and verification evidence.
+3. Actual checks executed and their outcomes; clearly mark unexecuted checks as not run.
+   Include exact human verification commands and relevant manual checks. Documentation-only
+   work does not require invented application tests.
+4. Related PRs, prerequisites and merge order, or explicitly state that there are none.
+5. Readiness: `DRAFT` while required checks, review or dependencies are pending. Use
+   `READY FOR REVIEW` only when the stated verification requirements are satisfied. Never infer that
+   CI passed or a PR was approved from local source inspection.
+6. Safe human commands for branch preparation, per-file commits and pushing the exact task
+   branch, plus instructions for opening the PR against its stated base. Avoid placeholders
+   in commands when the actual repository and branch are known.
 
-## Safety
+Report PR metadata as proposed until the PR exists. Include a PR number, URL, check result
+or merge result only when it has actually been observed. Do not generate command scripts.
 
-- Inspect `git status --short` before editing and before committing.
-- Preserve unrelated user changes.
-- Do not use destructive history commands unless the user explicitly requests them.
-- Do not amend, rebase, force-push, or rewrite shared history without explicit approval.
-- Never commit `.env` or production credentials.
+Merge into `main` only after required checks pass, relevant manual verification is complete,
+review feedback is resolved and repository approval requirements are satisfied. Check the
+actual merge policy before recommending a merge method. Creating a PR is not authorization
+to merge, publish, deploy or run a migration; preserve the existing human execution boundary.
