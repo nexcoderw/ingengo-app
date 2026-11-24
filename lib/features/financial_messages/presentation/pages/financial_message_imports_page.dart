@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../../../core/network/api_exception.dart';
 import '../../../../core/theme/app_colors.dart';
@@ -33,7 +34,6 @@ class _FinancialMessageImportsPageState
   String? _error;
   FinancialMessagePilotSummary? _pilotSummary;
   int _page = 1;
-  int _total = 0;
   bool _hasNextPage = false;
   int _generation = 0;
 
@@ -73,7 +73,6 @@ class _FinancialMessageImportsPageState
         _loading = true;
         _loadingMore = false;
         _items = const [];
-        _total = 0;
         _hasNextPage = false;
       } else {
         _loadingMore = true;
@@ -87,7 +86,6 @@ class _FinancialMessageImportsPageState
       setState(() {
         _items = reset ? result.items : [..._items, ...result.items];
         _page = result.page;
-        _total = result.total;
         _hasNextPage = result.hasNextPage;
       });
     } catch (error) {
@@ -113,6 +111,7 @@ class _FinancialMessageImportsPageState
     if (status == _status) {
       return;
     }
+    unawaited(HapticFeedback.selectionClick());
     setState(() => _status = status);
     unawaited(_load(reset: true));
   }
@@ -149,6 +148,16 @@ class _FinancialMessageImportsPageState
     }
   }
 
+  // Loads the next page automatically when the user nears the end of the list.
+  bool _onScroll(ScrollNotification notification) {
+    if (notification.metrics.axis == Axis.vertical &&
+        notification.metrics.extentAfter < 240 &&
+        _error == null) {
+      unawaited(_load(reset: false));
+    }
+    return false;
+  }
+
   @override
   Widget build(BuildContext context) {
     return PopScope(
@@ -167,7 +176,7 @@ class _FinancialMessageImportsPageState
               child: Column(
                 children: [
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
@@ -189,41 +198,43 @@ class _FinancialMessageImportsPageState
                   ),
                   Expanded(
                     child: RefreshIndicator(
+                      color: AppColors.primary,
                       onRefresh: _refresh,
-                      child: CustomScrollView(
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        slivers: [
-                          SliverPadding(
-                            padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
-                            sliver: SliverToBoxAdapter(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const _PageHeading(),
-                                  const SizedBox(height: 20),
-                                  _ShortcutCard(
-                                    needsUpdate:
-                                        _pilotSummary?.hasOutdatedShortcuts ??
-                                        false,
-                                    onPressed: () => unawaited(_openSetup()),
-                                  ),
-                                  const SizedBox(height: 26),
-                                  _InboxHeader(
-                                    selected: _status,
-                                    total: _loading || _items.isEmpty
-                                        ? null
-                                        : _total,
-                                    onSelected: _selectStatus,
-                                  ),
-                                ],
+                      child: NotificationListener<ScrollNotification>(
+                        onNotification: _onScroll,
+                        child: CustomScrollView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          slivers: [
+                            SliverPadding(
+                              padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                              sliver: SliverToBoxAdapter(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const _PageHeading(),
+                                    const SizedBox(height: 20),
+                                    _ShortcutCard(
+                                      needsUpdate:
+                                          _pilotSummary?.hasOutdatedShortcuts ??
+                                          false,
+                                      onPressed: () => unawaited(_openSetup()),
+                                    ),
+                                    const SizedBox(height: 24),
+                                    _StatusTabs(
+                                      selected: _status,
+                                      onSelected: _selectStatus,
+                                    ),
+                                    const SizedBox(height: 16),
+                                  ],
+                                ),
                               ),
                             ),
-                          ),
-                          SliverPadding(
-                            padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
-                            sliver: _buildInbox(),
-                          ),
-                        ],
+                            SliverPadding(
+                              padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
+                              sliver: _buildInbox(),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -262,13 +273,13 @@ class _FinancialMessageImportsPageState
               ? Icons.inventory_2_outlined
               : Icons.inbox_outlined,
           title: switch (_status) {
-            FinancialMessageImportStatus.pending => 'No messages to review',
-            FinancialMessageImportStatus.confirmed => 'No added messages',
-            FinancialMessageImportStatus.dismissed => 'No dismissed messages',
-            FinancialMessageImportStatus.expired => 'No expired messages',
+            FinancialMessageImportStatus.pending => 'You’re all caught up',
+            FinancialMessageImportStatus.confirmed => 'Nothing added yet',
+            FinancialMessageImportStatus.dismissed => 'Nothing dismissed',
+            FinancialMessageImportStatus.expired => 'Nothing expired',
           },
           detail: _status == FinancialMessageImportStatus.pending
-              ? 'New messages from your iPhone Shortcut will appear here.'
+              ? 'New payment messages will show up here.'
               : null,
         ),
       );
@@ -287,29 +298,9 @@ class _FinancialMessageImportsPageState
           );
         }
 
-        return Column(
-          children: [
-            if (error != null)
-              Text(
-                error,
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: AppColors.danger,
-                ),
-              ),
-            TextButton(
-              onPressed: _loadingMore
-                  ? null
-                  : () => unawaited(_load(reset: false)),
-              child: Text(
-                _loadingMore
-                    ? 'Loading more…'
-                    : error == null
-                    ? 'Load more'
-                    : 'Retry loading more',
-              ),
-            ),
-          ],
+        return _ListFooter(
+          error: error,
+          onRetry: () => unawaited(_load(reset: false)),
         );
       },
     );
@@ -329,16 +320,20 @@ class _PageHeading extends StatelessWidget {
           header: true,
           child: Text('Payment messages', style: textTheme.headlineMedium),
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 4),
         Text(
-          'Review imported payment messages before adding them to your records.',
-          style: textTheme.bodyMedium,
+          'Review before adding to your records.',
+          style: textTheme.bodyMedium?.copyWith(
+            color: AppColors.textSecondary,
+          ),
         ),
       ],
     );
   }
 }
 
+/// One compact, fully tappable card. It stays quiet by default and only
+/// draws attention when the Shortcut needs an update.
 class _ShortcutCard extends StatelessWidget {
   const _ShortcutCard({required this.needsUpdate, required this.onPressed});
 
@@ -348,165 +343,182 @@ class _ShortcutCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: AppColors.primary.withValues(alpha: 0.26)),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Color.alphaBlend(
-              AppColors.primary.withValues(alpha: 0.12),
+    final title = needsUpdate ? 'Shortcut update available' : 'iPhone Shortcut';
+    final subtitle = needsUpdate
+        ? 'Update to keep importing messages.'
+        : 'Connect your iPhone to import messages.';
+
+    return Material(
+      color: needsUpdate
+          ? Color.alphaBlend(
+              AppColors.primary.withValues(alpha: 0.10),
               AppColors.surface,
-            ),
-            AppColors.surface,
-          ],
+            )
+          : AppColors.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(
+          color: needsUpdate
+              ? AppColors.primary.withValues(alpha: 0.35)
+              : AppColors.border,
         ),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+      clipBehavior: Clip.antiAlias,
+      child: Semantics(
+        button: true,
+        label: '$title. $subtitle',
+        excludeSemantics: true,
+        child: InkWell(
+          onTap: onPressed,
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Row(
               children: [
                 _IconTile(
                   icon: needsUpdate
                       ? Icons.sync_problem_rounded
-                      : Icons.bolt_rounded,
+                      : Icons.phonelink_ring_rounded,
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      Text(title, style: textTheme.titleMedium),
+                      const SizedBox(height: 2),
                       Text(
-                        needsUpdate
-                            ? 'Shortcut update available'
-                            : 'iPhone Shortcut',
-                        style: textTheme.titleMedium,
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        needsUpdate
-                            ? 'Update your Shortcut to keep importing payment messages.'
-                            : 'Send payment messages to Ingengo using Apple Shortcuts.',
-                        style: textTheme.bodyMedium,
+                        subtitle,
+                        style: textTheme.bodySmall?.copyWith(
+                          color: AppColors.textSecondary,
+                        ),
                       ),
                     ],
                   ),
                 ),
+                const SizedBox(width: 8),
+                if (needsUpdate)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 7,
+                    ),
+                    decoration: const BoxDecoration(
+                      color: AppColors.primary,
+                      borderRadius: BorderRadius.all(Radius.circular(99)),
+                    ),
+                    child: Text(
+                      'Update',
+                      style: textTheme.labelMedium?.copyWith(
+                        color: AppColors.background,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  )
+                else
+                  const Icon(
+                    Icons.chevron_right_rounded,
+                    color: AppColors.textSecondary,
+                  ),
               ],
             ),
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: onPressed,
-              icon: Icon(
-                needsUpdate
-                    ? Icons.system_update_rounded
-                    : Icons.phonelink_ring_rounded,
-                size: 20,
-              ),
-              label: Text(
-                needsUpdate ? 'Update iPhone Shortcut' : 'Connect my iPhone',
-                textAlign: TextAlign.center,
-              ),
-              style: FilledButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: AppColors.background,
-                iconColor: AppColors.background,
-                minimumSize: const Size(0, 48),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                textStyle: textTheme.labelLarge?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );
   }
 }
 
-class _InboxHeader extends StatelessWidget {
-  const _InboxHeader({
-    required this.selected,
-    required this.total,
-    required this.onSelected,
-  });
+/// Segmented control that replaces the "Inbox" title, message counter and
+/// separate chips with a single, easy-to-reach switcher.
+class _StatusTabs extends StatelessWidget {
+  const _StatusTabs({required this.selected, required this.onSelected});
 
   final FinancialMessageImportStatus selected;
-  final int? total;
   final ValueChanged<FinancialMessageImportStatus> onSelected;
+
+  static const _statuses = [
+    FinancialMessageImportStatus.pending,
+    FinancialMessageImportStatus.confirmed,
+    FinancialMessageImportStatus.dismissed,
+  ];
 
   @override
   Widget build(BuildContext context) {
-    const statuses = [
-      FinancialMessageImportStatus.pending,
-      FinancialMessageImportStatus.confirmed,
-      FinancialMessageImportStatus.dismissed,
-    ];
     final textTheme = Theme.of(context).textTheme;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Wrap(
-          spacing: 12,
-          runSpacing: 4,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            Semantics(
-              header: true,
-              child: Text('Inbox', style: textTheme.titleLarge),
-            ),
-            if (total != null)
-              Text(
-                '$total ${total == 1 ? 'message' : 'messages'}',
-                style: textTheme.bodySmall?.copyWith(
-                  color: AppColors.textSecondary,
-                ),
-              ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 4,
-          children: [
-            for (final status in statuses)
-              ChoiceChip(
-                label: Text(_inboxStatusLabel(status)),
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: const ShapeDecoration(
+        color: AppColors.surface,
+        shape: StadiumBorder(side: BorderSide(color: AppColors.border)),
+      ),
+      child: Row(
+        children: [
+          for (final status in _statuses)
+            Expanded(
+              child: _StatusTab(
+                label: _inboxStatusLabel(status),
                 selected: selected == status,
-                onSelected: (_) => onSelected(status),
-                showCheckmark: false,
-                backgroundColor: AppColors.surface,
-                selectedColor: AppColors.primary,
-                side: BorderSide(
-                  color: selected == status
-                      ? AppColors.primary
-                      : AppColors.border,
-                ),
-                shape: const StadiumBorder(),
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                labelStyle: textTheme.labelLarge?.copyWith(
-                  color: selected == status
-                      ? AppColors.background
-                      : AppColors.textSecondary,
-                ),
-                materialTapTargetSize: MaterialTapTargetSize.padded,
+                textStyle: textTheme.labelLarge,
+                onTap: () => onSelected(status),
               ),
-          ],
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatusTab extends StatelessWidget {
+  const _StatusTab({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+    this.textStyle,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  final TextStyle? textStyle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: label,
+      excludeSemantics: true,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+        decoration: ShapeDecoration(
+          color: selected ? AppColors.primary : Colors.transparent,
+          shape: const StadiumBorder(),
         ),
-      ],
+        child: Material(
+          type: MaterialType.transparency,
+          child: InkWell(
+            onTap: onTap,
+            customBorder: const StadiumBorder(),
+            child: SizedBox(
+              height: 44,
+              child: Center(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: textStyle?.copyWith(
+                    color: selected
+                        ? AppColors.background
+                        : AppColors.textSecondary,
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -528,7 +540,7 @@ class _ImportRow extends StatelessWidget {
     return Material(
       color: AppColors.surface,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
         side: const BorderSide(color: AppColors.border),
       ),
       clipBehavior: Clip.antiAlias,
@@ -537,7 +549,7 @@ class _ImportRow extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(14),
             child: Row(
               children: [
                 _IconTile(icon: _sourceIcon(item)),
@@ -546,47 +558,59 @@ class _ImportRow extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(item.senderLabel, style: textTheme.titleMedium),
+                      Text(
+                        item.senderLabel,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: textTheme.titleMedium,
+                      ),
                       const SizedBox(height: 2),
                       Text(
-                        '${item.sourceLabel} · ${_shortDate(item.messageReceivedAt)}',
+                        _friendlyDate(item.messageReceivedAt),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: textTheme.bodySmall?.copyWith(
                           color: AppColors.textSecondary,
                         ),
                       ),
-                      const SizedBox(height: 6),
-                      Wrap(
-                        spacing: 10,
-                        runSpacing: 4,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        children: [
-                          Text(
-                            amount == null
-                                ? 'Check amount'
-                                : '${_formatAmount(amount)} RWF',
-                            style: textTheme.labelLarge?.copyWith(
-                              color: amount == null
-                                  ? AppColors.textSecondary
-                                  : AppColors.textPrimary,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          if (needsReview)
-                            Text(
-                              'Review details',
-                              style: textTheme.labelMedium?.copyWith(
-                                color: AppColors.primary,
-                              ),
-                            ),
-                        ],
-                      ),
                     ],
                   ),
                 ),
-                const SizedBox(width: 8),
-                const Icon(
-                  Icons.chevron_right_rounded,
-                  color: AppColors.textSecondary,
+                const SizedBox(width: 12),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    if (amount == null)
+                      Text(
+                        'Check amount',
+                        style: textTheme.labelLarge?.copyWith(
+                          color: AppColors.textSecondary,
+                        ),
+                      )
+                    else
+                      Text.rich(
+                        TextSpan(
+                          text: _formatAmount(amount),
+                          style: textTheme.titleMedium?.copyWith(
+                            color: AppColors.textPrimary,
+                            fontWeight: FontWeight.w700,
+                          ),
+                          children: [
+                            TextSpan(
+                              text: ' RWF',
+                              style: textTheme.labelSmall?.copyWith(
+                                color: AppColors.textSecondary,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    if (needsReview) ...[
+                      const SizedBox(height: 6),
+                      const _ReviewBadge(),
+                    ],
+                  ],
                 ),
               ],
             ),
@@ -595,6 +619,26 @@ class _ImportRow extends StatelessWidget {
       ),
     );
   }
+}
+
+class _ReviewBadge extends StatelessWidget {
+  const _ReviewBadge();
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+    decoration: BoxDecoration(
+      color: AppColors.primary.withValues(alpha: 0.12),
+      borderRadius: BorderRadius.circular(99),
+    ),
+    child: Text(
+      'Check details',
+      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+        color: AppColors.primary,
+        fontWeight: FontWeight.w700,
+      ),
+    ),
+  );
 }
 
 class _IconTile extends StatelessWidget {
@@ -608,10 +652,51 @@ class _IconTile extends StatelessWidget {
     height: 44,
     decoration: BoxDecoration(
       color: AppColors.primary.withValues(alpha: 0.10),
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(14),
     ),
     child: Icon(icon, color: AppColors.primary, size: 22),
   );
+}
+
+class _ListFooter extends StatelessWidget {
+  const _ListFooter({required this.error, required this.onRetry});
+
+  final String? error;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final error = this.error;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: Center(
+        child: error == null
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: AppColors.primary,
+                ),
+              )
+            : Column(
+                children: [
+                  Text(
+                    error,
+                    textAlign: TextAlign.center,
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodyMedium?.copyWith(color: AppColors.danger),
+                  ),
+                  TextButton(
+                    onPressed: onRetry,
+                    child: const Text('Retry loading more'),
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
 }
 
 class _LoadingList extends StatelessWidget {
@@ -624,31 +709,31 @@ class _LoadingList extends StatelessWidget {
     child: ExcludeSemantics(
       child: Column(
         children: [
-          for (var index = 0; index < 3; index++) ...[
+          for (var index = 0; index < 4; index++) ...[
             if (index > 0) const SizedBox(height: 10),
             Container(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
                 color: AppColors.surface,
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(18),
                 border: Border.all(color: AppColors.border),
               ),
               child: const Row(
                 children: [
-                  SkeletonBox(width: 44, height: 44, radius: 12),
+                  SkeletonBox(width: 44, height: 44, radius: 14),
                   SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        SkeletonBox(width: 124, height: 12),
+                        SkeletonBox(width: 120, height: 12),
                         SizedBox(height: 8),
-                        SkeletonBox(width: 92, height: 9),
-                        SizedBox(height: 8),
-                        SkeletonBox(width: 66, height: 10),
+                        SkeletonBox(width: 80, height: 9),
                       ],
                     ),
                   ),
+                  SizedBox(width: 12),
+                  SkeletonBox(width: 64, height: 12),
                 ],
               ),
             ),
@@ -681,16 +766,17 @@ class _InboxState extends StatelessWidget {
     return Semantics(
       liveRegion: true,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 32),
         decoration: BoxDecoration(
           color: AppColors.surface,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(20),
           border: Border.all(color: AppColors.border),
         ),
         child: Column(
           children: [
             _IconTile(icon: icon),
-            const SizedBox(height: 12),
+            const SizedBox(height: 14),
             Text(
               title,
               textAlign: TextAlign.center,
@@ -701,7 +787,9 @@ class _InboxState extends StatelessWidget {
               Text(
                 detail,
                 textAlign: TextAlign.center,
-                style: textTheme.bodyMedium,
+                style: textTheme.bodyMedium?.copyWith(
+                  color: AppColors.textSecondary,
+                ),
               ),
             ],
             if (action != null) ...[const SizedBox(height: 8), action],
@@ -712,8 +800,40 @@ class _InboxState extends StatelessWidget {
   }
 }
 
-String _shortDate(DateTime value) =>
-    '${value.day.toString().padLeft(2, '0')}/${value.month.toString().padLeft(2, '0')}/${value.year}';
+const _months = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];
+
+String _two(int value) => value.toString().padLeft(2, '0');
+
+/// "Today, 14:05", "Yesterday", "12 Nov" or "12 Nov 2025".
+String _friendlyDate(DateTime value) {
+  final local = value.toLocal();
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final day = DateTime(local.year, local.month, local.day);
+  final daysAgo = today.difference(day).inDays;
+
+  if (daysAgo == 0) {
+    return 'Today, ${_two(local.hour)}:${_two(local.minute)}';
+  }
+  if (daysAgo == 1) {
+    return 'Yesterday';
+  }
+  final label = '${local.day} ${_months[local.month - 1]}';
+  return local.year == now.year ? label : '$label ${local.year}';
+}
 
 String _formatAmount(String value) {
   final whole = value.split('.').first;
